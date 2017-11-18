@@ -17,6 +17,7 @@ use mongodb::{Client, ThreadedClient};
 use mongodb::db::ThreadedDatabase;
 
 use futures::{Sink, Stream};
+use futures::future::Future;
 
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
@@ -85,7 +86,8 @@ fn main() {
             // Create new message and send to the client, simulating a response
             let msg = Message::Quit;
             let jsoned = serde_json::to_value(&msg).unwrap();
-            serialized.send(jsoned);
+            let action = serialized.send(jsoned);
+            action.wait();
             println!("SENDED: {:?}", msg);
 
             Ok(())
@@ -102,3 +104,4 @@ fn main() {
 
 //TODO: parse command line arguments
 //TODO: separare i vari casi e agire di conseguenza
+//TODO: gestire segnali (es SIGPIPE)

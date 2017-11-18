@@ -78,7 +78,9 @@ fn main() {
             let jsoned = serde_json::to_value(&msg).unwrap();
 
             // Send the value
-            serialized.send(jsoned);
+            let action = serialized.send(jsoned);
+            action.wait();
+
             println!("SENDED: {:?}", msg);
             Ok(())
         }));
@@ -103,20 +105,14 @@ fn main() {
 
     });
 
-    let (a,b) = mpsc::channel(0);
-    let future_loop = b.for_each(|msg: i32|{
-        Ok(())
-    });
-
     let client = client.map_err(|_| panic!());
     core.handle().spawn(client);
-    core.run(future_loop).unwrap();
 
 
     println!("before loop");
     //loop provvisoriomap_err(|_| panic!());
     loop {
-
+        core.turn(None);
     }
 
 }
