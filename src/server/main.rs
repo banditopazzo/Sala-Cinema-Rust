@@ -54,27 +54,39 @@ fn main() {
     // Pull out a stream of sockets for incoming connections
     let server = listener.incoming().for_each(|(sock, _)| {
 
+        println!("Connected 1 user");
+
         let (reader, writer) = sock.split();
 
         // Delimit frames using a length header
         let length_delimited = length_delimited::FramedRead::new(reader);
         let length_delimited_wr = length_delimited::FramedWrite::new(writer);
 
-        // Serialize frames with JSON
-        let serialized= WriteJson::<_ ,Value>::new(length_delimited_wr);
+        // Serialize frames with JSON - necessario "mut" per uso successivo
+        let mut serialized= WriteJson::<_ ,Value>::new(length_delimited_wr);
 
         // Deserialize frames
         let deserialized = ReadJson::<_, Value>::new(length_delimited)
             .map_err(|e| println!("ERR: {:?}", e));
 
         // Spawn a concurrent task that prints all received messages to STDOUT
-        handle.spawn(deserialized.for_each(|msg| {
+        handle.spawn(deserialized.for_each(move |msg| {
+            println!("received something");
+
+            //Trick mostruoso, ma necessario
+            let serialized = &mut serialized;
 
             let messaggio_ricevuto: Result<Message, _> = serde_json::from_value(msg);
             match messaggio_ricevuto {
                 Ok(messaggio) => println!("GOT: {:?}", messaggio),
                 Err(e) => println!("Errore di tipo: {:?}", e.classify())
             }
+
+            // Create new message and send to the client, simulating a response
+            let msg = Message::Quit;
+            let jsoned = serde_json::to_value(&msg).unwrap();
+            serialized.send(jsoned);
+            println!("SENDED: {:?}", msg);
 
             Ok(())
 

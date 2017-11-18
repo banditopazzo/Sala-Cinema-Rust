@@ -6,6 +6,10 @@ extern crate futures;
 extern crate tokio_core;
 extern crate sala_cinema;
 extern crate chrono;
+extern crate bytes;
+
+
+use bytes::BytesMut;
 
 use chrono::prelude::*;
 
@@ -13,22 +17,27 @@ use sala_cinema::models::{Prenotazione, Posto};
 use sala_cinema::networking::*;
 
 use futures::{Future, Sink, Stream};
+use futures::future::Executor;
 use futures::sync::mpsc;
 
 use tokio_core::reactor::{Core, Handle};
 use tokio_core::net::TcpStream;
 
 use tokio_io::{AsyncRead, AsyncWrite};
+use tokio_io::io::{ReadHalf, WriteHalf};
 
 // Use length delimited frames
-use tokio_io::codec::length_delimited;
+use tokio_io::codec::{length_delimited, FramedWrite, FramedRead};
 use tokio_serde_json::{ReadJson, WriteJson};
 use serde_json::Value;
 
 use std::io;
 use std::thread;
 
-
+/*struct IO_Container{
+    reader: ReadJson<FramedRead<ReadHalf<TcpStream>, BytesMut>, Value>,
+    writer: WriteJson<FramedWrite<WriteHalf<TcpStream>, BytesMut>, Value>
+}*/
 
 fn main() {
 
@@ -46,7 +55,7 @@ fn main() {
         &"127.0.0.1:12345".parse().unwrap(),
         &handle);
 
-    core.run(socket.and_then(|sock| {
+    let client = socket.and_then(move |sock| {
 
 
         let (reader, writer) = sock.split();
@@ -54,22 +63,58 @@ fn main() {
         // Delimit frames using a length header
         //Read
         let length_delimited = length_delimited::FramedRead::new(reader);
-        let deserialized = ReadJson::<_, Value>::new(length_delimited);
+        let deserialized = ReadJson::<_, Value>::new(length_delimited)
+            .map_err(|e| println!("ERR: {:?}", e));
         //Write
         let length_delimited_wr = length_delimited::FramedWrite::new(writer);
-        let serialized= WriteJson::<_ ,Value>::new(length_delimited_wr);
+        let mut serialized= WriteJson::<_ ,Value>::new(length_delimited_wr);
 
-        let msg = Message::Quit;
-        println!("SENDED: {:?}", msg);
+        handle.clone().spawn(stdin_rx.for_each(move |msg|{
+            println!("readed something from keyboard");
 
-        let jsoned = serde_json::to_value(&msg).unwrap();
+            let serialized = &mut serialized;
 
-        // Send the value
-        serialized.send(jsoned)
+            let msg = Message::Quit;
+            let jsoned = serde_json::to_value(&msg).unwrap();
 
-    })).unwrap();
+            // Send the value
+            serialized.send(jsoned);
+            println!("SENDED: {:?}", msg);
+            Ok(())
+        }));
 
-    //loop provvisorio
+
+
+        handle.clone().spawn(deserialized.for_each(|msg| {
+
+            let messaggio_ricevuto: Result<Message, _> = serde_json::from_value(msg);
+            match messaggio_ricevuto {
+                Ok(messaggio) => println!("GOT: {:?}", messaggio),
+                Err(e) => println!("Errore di tipo: {:?}", e.classify())
+            }
+
+            Ok(())
+
+        }));
+
+        println!("Spawned futures");
+
+        Ok(())
+
+    });
+
+    let (a,b) = mpsc::channel(0);
+    let future_loop = b.for_each(|msg: i32|{
+        Ok(())
+    });
+
+    let client = client.map_err(|_| panic!());
+    core.handle().spawn(client);
+    core.run(future_loop).unwrap();
+
+
+    println!("before loop");
+    //loop provvisoriomap_err(|_| panic!());
     loop {
 
     }
