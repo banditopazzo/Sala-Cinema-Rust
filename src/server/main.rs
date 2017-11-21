@@ -9,6 +9,8 @@ extern crate tokio_serde_json;
 extern crate serde_json;
 extern crate bytes;
 
+use std::error::Error;
+
 use sala_cinema::mongodb_service::PrenotazioneCollection;
 use sala_cinema::models::{Prenotazione, Posto};
 use sala_cinema::networking::*;
@@ -27,7 +29,7 @@ use bytes::BytesMut;
 
 // Use length delimited frames
 use tokio_io::codec::length_delimited;
-use tokio_io::{AsyncRead, AsyncWrite};
+use tokio_io::AsyncRead;
 
 use serde_json::Value;
 use tokio_serde_json::{ReadJson, WriteJson};
@@ -42,7 +44,7 @@ fn main() {
     let mongo_coll = mongo.db("RustProva").collection("prenotazione");
 
     //Initialize the collection service
-    let coll = PrenotazioneCollection { mongo_coll };
+    let mut coll = PrenotazioneCollection { mongo_coll };
 
     // Create the event loop that will drive this server
     let mut core = Core::new().unwrap();
@@ -72,23 +74,30 @@ fn main() {
 
         // Spawn a concurrent task that prints all received messages to STDOUT
         handle.spawn(deserialized.for_each(move |msg| {
-            println!("received something");
 
-            //Trick mostruoso, ma necessario
             let serialized = &mut serialized;
 
             let messaggio_ricevuto: Result<Message, _> = serde_json::from_value(msg);
-            match messaggio_ricevuto {
-                Ok(messaggio) => println!("GOT: {:?}", messaggio),
-                Err(e) => println!("Errore di tipo: {:?}", e.classify())
-            }
+            let messaggio_ricevuto = match messaggio_ricevuto {
+                Ok(messaggio) => messaggio,
+                Err(e) => Message::Error(String::from("Messaggio non riconosciuto"))
+            };
+
+            let response = match messaggio_ricevuto {
+                Message::GetMap => Message::Quit,
+                Message::Prenota(posto) => Message::Quit,
+                Message::Delete(id) => Message::Quit,
+                Message::Quit => Message::Quit,
+                Message::Error(err) => Message::Error(err),
+                _ => Message::Error(String::from("Messaggio non accettato"))
+            };
 
             // Create new message and send to the client, simulating a response
-            let msg = Message::Quit;
-            let jsoned = serde_json::to_value(&msg).unwrap();
-            let action = serialized.send(jsoned);
-            action.wait();
-            println!("SENDED: {:?}", msg);
+            let jsoned = serde_json::to_value(&response).unwrap();
+            match serialized.send(jsoned).wait() {
+                Ok(_) => println!("SENDED: {:?}", response),
+                Err(_) => println!("Error sending message")
+            };
 
             Ok(())
 
@@ -100,6 +109,13 @@ fn main() {
     // Spin up the server on the event loop
     core.run(server).unwrap();
 
+}
+
+fn elimina_posto(coll: &PrenotazioneCollection, id: &String) -> Message {
+    match coll.delete_by_codice(&id) {
+        Ok(_) => Message::Success(String::from("Prenotazione eliminata")),
+        Err(e) => Message::Error(String::from(e.description()))
+    }
 }
 
 //TODO: parse command line arguments

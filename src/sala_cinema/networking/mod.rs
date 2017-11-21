@@ -2,8 +2,10 @@ use super::models::Prenotazione;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
-    Quit,
-    Delete(String),
+    Success(String),
+    Error(String),
+    GetMap,
     Prenota(Prenotazione),
-    GetMap
+    Delete(String),
+    Quit,
 }

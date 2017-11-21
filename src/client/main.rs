@@ -9,35 +9,26 @@ extern crate chrono;
 extern crate bytes;
 
 
-use bytes::BytesMut;
-
 use chrono::prelude::*;
 
 use sala_cinema::models::{Prenotazione, Posto};
 use sala_cinema::networking::*;
 
 use futures::{Future, Sink, Stream};
-use futures::future::Executor;
 use futures::sync::mpsc;
 
-use tokio_core::reactor::{Core, Handle};
+use tokio_core::reactor::Core;
 use tokio_core::net::TcpStream;
 
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::io::{ReadHalf, WriteHalf};
+use tokio_io::AsyncRead;
 
 // Use length delimited frames
-use tokio_io::codec::{length_delimited, FramedWrite, FramedRead};
+use tokio_io::codec::length_delimited;
 use tokio_serde_json::{ReadJson, WriteJson};
 use serde_json::Value;
 
 use std::io;
 use std::thread;
-
-/*struct IO_Container{
-    reader: ReadJson<FramedRead<ReadHalf<TcpStream>, BytesMut>, Value>,
-    writer: WriteJson<FramedWrite<WriteHalf<TcpStream>, BytesMut>, Value>
-}*/
 
 fn main() {
 
@@ -57,7 +48,6 @@ fn main() {
 
     let client = socket.and_then(move |sock| {
 
-
         let (reader, writer) = sock.split();
 
         // Delimit frames using a length header
@@ -69,24 +59,23 @@ fn main() {
         let length_delimited_wr = length_delimited::FramedWrite::new(writer);
         let mut serialized= WriteJson::<_ ,Value>::new(length_delimited_wr);
 
-        handle.clone().spawn(stdin_rx.for_each(move |msg|{
-            println!("readed something from keyboard");
+        //Future that takes messages from the stdin-reader-thread and forward them to the socket
+        handle.clone().spawn(stdin_rx.for_each(move |msg| {
 
             let serialized = &mut serialized;
 
-            let msg = Message::Quit;
             let jsoned = serde_json::to_value(&msg).unwrap();
 
             // Send the value
-            let action = serialized.send(jsoned);
-            action.wait();
+            match serialized.send(jsoned).wait() {
+                Ok(_) => println!("SENDED: {:?}", msg),
+                Err(_) => println!("Error sending message")
+            };
 
-            println!("SENDED: {:?}", msg);
             Ok(())
         }));
 
-
-
+        //Future that takes messages from the socket and print them on the stout
         handle.clone().spawn(deserialized.for_each(|msg| {
 
             let messaggio_ricevuto: Result<Message, _> = serde_json::from_value(msg);
@@ -99,8 +88,6 @@ fn main() {
 
         }));
 
-        println!("Spawned futures");
-
         Ok(())
 
     });
@@ -109,8 +96,7 @@ fn main() {
     core.handle().spawn(client);
 
 
-    println!("before loop");
-    //loop provvisoriomap_err(|_| panic!());
+    //Loop the event loop!! :)
     loop {
         core.turn(None);
     }
@@ -122,7 +108,12 @@ fn main() {
 fn read_stdin(mut tx: mpsc::Sender<Message>) {
     let mut stdin = io::stdin();
     loop {
-        println!("Please enter your choice.");
+        println!("\n\nSeleziona l'operazione\n\n");
+        println!("1 - Mostra mappa dei posti disponibili\n");
+        println!("2 - Effettua una prenotazione\n");
+        println!("3 - Disdici una prenotazione conoscendo il codice\n");
+        println!("4 - Esci dal programma\n\n");
+        println!("Inserisci il numero corrispondente all'operazione scelta:  ");
 
         let mut guess = String::new();
 
@@ -134,15 +125,25 @@ fn read_stdin(mut tx: mpsc::Sender<Message>) {
             Err(_) => continue,
         };
 
-        println!("You choose: {}", guess);
+        //Convert option in message
+        let msg = match guess {
+            1 => Message::GetMap,
+            2 => Message::Error(String::from("Not implemented yet")),
+            3 => Message::Delete(String::from("prova")),
+            4 => Message::Quit,
+            _ => Message::Error(String::from("Opzione non riconosciuta. Riprovare..."))
+        };
 
-        match guess {
-            1 => println!("OK"),
-            _ => continue
+        //Check for unknown command
+        match msg {
+            Message::Error(msg) => {
+                println!("{}", msg);
+                continue;
+            },
+            _ => {}
         }
 
-        let msg = Message::Quit;
-
+        //Send the message to the primary thread
         tx = match tx.send(msg).wait() {
             Ok(tx) => tx,
             Err(_) => break,
@@ -154,4 +155,3 @@ fn read_stdin(mut tx: mpsc::Sender<Message>) {
 
 
 //TODO: parse command line arguments
-//TODO: event loop bloccante for user input
