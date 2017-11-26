@@ -144,7 +144,13 @@ fn main() {
 
 fn elimina_posto(coll: &PrenotazioneCollection, id: &String) -> Message {
     match coll.delete_by_codice(&id) {
-        Ok(_) => Message::Success(String::from("Prenotazione eliminata")),
+        Ok(delete_result) => {
+            if delete_result.deleted_count == 1 {
+                Message::Success(String::from("Prenotazione eliminata con successo"))
+            } else {
+                Message::Error(String::from("Nessuna prenotazione corrispondente"))
+            }
+        },
         Err(e) => Message::Error(String::from(e.description()))
     }
 }

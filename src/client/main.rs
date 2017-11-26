@@ -129,7 +129,7 @@ fn read_stdin(mut tx: mpsc::Sender<Message>) {
         let msg = match guess {
             1 => Message::GetMap,
             2 => Message::Error(String::from("Not implemented yet")),
-            3 => Message::Delete(String::from("prova")),
+            3 => Message::Delete(String::from("5a088128373862eb2b222aa8")),
             4 => Message::Quit,
             _ => Message::Error(String::from("Opzione non riconosciuta. Riprovare..."))
         };
