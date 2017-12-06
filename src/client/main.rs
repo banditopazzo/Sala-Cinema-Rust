@@ -128,7 +128,14 @@ fn read_stdin(mut tx: mpsc::Sender<Message>) {
         //Convert option in message
         let msg = match guess {
             1 => Message::GetMap,
-            2 => Message::Error(String::from("Not implemented yet")),
+            2 => Message::Prenota(Prenotazione {
+                codice: None,
+                data: Utc.ymd(2017,6,3).and_hms(0,0,0),
+                posto: Posto {
+                    fila: String::from("XX"),
+                    numero: 66
+                }
+            }),
             3 => Message::Delete(String::from("5a088128373862eb2b222aa8")),
             4 => Message::Quit,
             _ => Message::Error(String::from("Opzione non riconosciuta. Riprovare..."))

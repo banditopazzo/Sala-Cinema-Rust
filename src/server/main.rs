@@ -41,6 +41,9 @@ use tokio_serde_json::{ReadJson, WriteJson};
 
 use std::thread;
 
+extern crate bson;
+use bson::Bson;
+
 fn main() {
 
     const DB_NAME: &str = "RustProva";
@@ -116,7 +119,7 @@ fn main() {
 
             let response = match messaggio_ricevuto {
                 Message::GetMap => Message::Quit,
-                Message::Prenota(posto) => Message::Quit,
+                Message::Prenota(prenotazione) => prenota_posto(&db_service, &prenotazione),
                 Message::Delete(id) => elimina_posto(&db_service, &id),
                 Message::Quit => Message::Quit,
                 Message::Error(err) => Message::Error(err),
@@ -152,6 +155,21 @@ fn elimina_posto(coll: &PrenotazioneCollection, id: &String) -> Message {
             }
         },
         Err(e) => Message::Error(String::from(e.description()))
+    }
+}
+//TODO: non controlla se esiste gia una prenotazione di quel tipo
+fn prenota_posto(coll: &PrenotazioneCollection, prenotazione: &Prenotazione) -> Message {
+    match coll.write(&prenotazione) {
+        Ok(write_result) =>{
+            let bson = write_result.inserted_id.unwrap();
+            match bson {
+                Bson::ObjectId(oid) => Message::Success(oid.to_hex()),
+                _ => panic!("Errore")
+            }
+        },
+
+        Err(e) =>
+            Message::Error(String::from(e.description()))
     }
 }
 
